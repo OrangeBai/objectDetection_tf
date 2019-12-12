@@ -1,5 +1,5 @@
 from tensorflow_core.python.keras.engine.base_layer import Layer
-import tensorflow as tf
+import tensorflow_core as tf
 
 
 class RoiPoolingConv(Layer):
@@ -44,8 +44,6 @@ class RoiPoolingConv(Layer):
         img = x[0]
         rois = x[1]
 
-        input_shape = tf.shape(img)
-
         outputs = []
 
         for roi_idx in range(self.num_rois):
@@ -60,12 +58,10 @@ class RoiPoolingConv(Layer):
             w = tf.cast(w, 'int32')
             h = tf.cast(h, 'int32')
 
-            rs = tf.image.resize_images(img[:, y:y + h, x:x + w, :], (self.pool_size, self.pool_size))
+            rs = tf.image.resize(img[:, y:y + h, x:x + w, :], (self.pool_size, self.pool_size))
             outputs.append(rs)
 
-        final_output = tf.concatenate(outputs, axis=0)
+        final_output = tf.concat(outputs, axis=0)
         final_output = tf.reshape(final_output, (1, self.num_rois, self.pool_size, self.pool_size, self.nb_channels))
-
-        final_output = tf.permute_dimensions(final_output, (0, 1, 2, 3, 4))
 
         return final_output
