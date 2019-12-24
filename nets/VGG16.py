@@ -1,9 +1,7 @@
-from tensorflow_core.python.keras.layers.convolutional import Conv2D
-from tensorflow_core.python.keras.layers.core import Flatten, Dense, Dropout
-from tensorflow_core.python.keras.layers.wrappers import TimeDistributed
-from tensorflow_core.python.keras.layers.pooling import MaxPooling2D
-from tensorflow_core.python.keras.engine.input_layer import Input
-from tensorflow_core.python.keras.engine.training import Model
+from tensorflow.python.keras.layers.convolutional import Conv2D
+from tensorflow.python.keras.layers.core import Flatten, Dense, Dropout
+from tensorflow.python.keras.layers.wrappers import TimeDistributed
+from tensorflow.python.keras.layers.pooling import MaxPooling2D
 from nets.RoiPoolingConv import *
 
 
@@ -40,14 +38,18 @@ def vgg_16_base(input_tensor=None):
     return x
 
 
-def classifier(base_layers, input_rois, num_rois, nb_classes=21, trainable=False):
+def rpn(base_layers, num_anchors):
+    x = Conv2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='normal', name='rpn_conv1')(
+        base_layers)
 
-    # compile times on theano tend to be very high, so we use smaller ROI pooling regions to workaround
+    x_class = Conv2D(num_anchors, (1, 1), activation='sigmoid', kernel_initializer='uniform', name='rpn_out_class')(x)
+    x_reg = Conv2D(num_anchors * 4, (1, 1), activation='linear', kernel_initializer='zero', name='rpn_out_regress')(x)
 
-    pooling_regions = 7
-    input_shape = (num_rois, 7, 7, 512)
+    return [x_class, x_reg, base_layers]
 
-    out_roi_pool = RoiPoolingConv(7, num_rois)([base_layers, input_rois])
+
+def classifier(base_layers, pooling_region, input_rois, num_rois, nb_classes, trainable=False):
+    out_roi_pool = RoiPoolingConv(pooling_region, num_rois)([base_layers, input_rois])
 
     out = TimeDistributed(Flatten(name='flatten'))(out_roi_pool)
     out = TimeDistributed(Dense(4096, activation='relu', name='fc1'))(out)
@@ -55,18 +57,14 @@ def classifier(base_layers, input_rois, num_rois, nb_classes=21, trainable=False
     out = TimeDistributed(Dense(4096, activation='relu', name='fc2'))(out)
     out = TimeDistributed(Dropout(0.5))(out)
 
-    out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
+    out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'),
+                                name='dense_class_{}'.format(nb_classes))(out)
     # note: no regression target for bg class
-    out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)
+    out_reg = TimeDistributed(Dense(4 * (nb_classes - 1), activation='linear', kernel_initializer='zero'),
+                              name='dense_regress_{}'.format(nb_classes))(out)
 
-    return [out_class, out_regr]
+    return [out_class, out_reg]
 
 
 if __name__ == '__main__':
-    img_input = Input(shape=(224, 224, 3))
-    roi_input = Input(shape=(None, 4))
-    base = vgg_16_base(img_input)
-    c = classifier(base, roi_input, 32, nb_classes=10, trainable=True)
-    model_all = Model([img_input, roi_input], c)
-    model_all.summary()
-
+    pass
