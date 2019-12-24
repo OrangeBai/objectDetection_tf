@@ -23,6 +23,8 @@ class FasterRcnnConfig(BaseConfig):
         self.rpn_negative = 0.3
         self.num_cls = 10
         self.threshold = 0.7
+        self.img_shape = (720, 1080)
+        self.feature_shape = (22, 33)
 
     def cal_gt_tags(self, img, labels, feature_size):
         height = feature_size[0]
@@ -43,6 +45,7 @@ class FasterRcnnConfig(BaseConfig):
         best_x_for_bbox = np.zeros((num_bbox, 4)).astype(int)
         best_dx_for_bbox = np.zeros((num_bbox, 4)).astype(np.float32)
 
+        best_iou_all = 0
         for anchor_idx in range(len(self.anchor_sets)):
 
             anchor_scale, anchor_ratio = self.anchor_sets[anchor_idx]
@@ -70,6 +73,8 @@ class FasterRcnnConfig(BaseConfig):
                         gt_class = label['category']
                         gt_box = label['coordinates']
                         cur_iou = calculate_iou(gt_box, anchor_box)
+                        if cur_iou > best_iou_all:
+                            best_iou_all = cur_iou
                         if cur_iou > self.rpn_positive and cur_iou > best_iou:
                             best_iou = cur_iou
                             best_class = gt_class
@@ -121,8 +126,9 @@ class FasterRcnnConfig(BaseConfig):
                     x2 = x1 + anchor_width
                     y2 = y1 + anchor_height
 
-                    all_box[cur_idx, :4] = inv_dx(pre_rpn_reg[ix, jy, 4 * anchor_idx: 4 * anchor_idx + 4],
-                                                  [x1, y1, x2, y2])
+                    pred_box = inv_dx(pre_rpn_reg[ix, jy, 4 * anchor_idx: 4 * anchor_idx + 4], [x1, y1, x2, y2],
+                                      self.img_shape)
+                    all_box[cur_idx, :4] = pred_box
                     all_prob[cur_idx] = pre_signal[ix, jy, anchor_idx]
 
         selected = non_max_suppression_fast(all_box, all_prob)
@@ -134,17 +140,36 @@ class FasterRcnnConfig(BaseConfig):
         num_box = anchor_boxes.shape[0]
 
         anchor_cls = np.zeros((num_box, self.num_cls))
-        anchor_reg = np.zeros((num_box, 4 * self.num_cls))
-        anchor_pos = np.zeros((num_box))
+        anchor_reg = np.zeros((num_box, 4 * (self.num_cls - 1)))
+        anchor_pos = np.zeros(num_box)
+
+        anchor_x = np.zeros((num_box, 4))
+        best_iou = 0
         for anchor_box_idx in range(num_box):
+            cur_anchor_box = anchor_boxes[anchor_box_idx]
+            feature_box = bbox_to_fbox(cur_anchor_box, self.downscale)
+            anchor_x[anchor_box_idx, :] = clip_fbox(cal_x1_and_length(feature_box), self.feature_shape)
+
             for label in labels:
                 cur_anchor_box = anchor_boxes[anchor_box_idx]
                 cur_gt_box = label['coordinates']
+
                 cur_gt_cls = label['category']
 
                 iou = calculate_iou(cur_anchor_box, cur_gt_box)
+                if iou > best_iou:
+                    best_iou = iou
 
                 if iou > self.threshold:
                     anchor_cls[anchor_box_idx, cur_gt_cls] = 1
-                    anchor_reg[anchor_box_idx, :] = cal_dx(cur_gt_box, cur_anchor_box)
+                    normalized_anchor = fbox_to_bbox(feature_box, self.downscale)
+                    anchor_reg[anchor_box_idx, 4 * cur_gt_cls - 4: 4 * cur_gt_cls] = cal_dx(cur_gt_box,
+                                                                                            normalized_anchor)
                     anchor_pos[anchor_box_idx] = 1
+                else:
+                    anchor_cls[anchor_box_idx, 0] = 1
+        anchor_x = np.expand_dims(anchor_x, axis=0)
+        anchor_cls = np.expand_dims(anchor_cls, axis=0)
+        anchor_reg = np.expand_dims(anchor_reg, axis=0)
+
+        return anchor_x, anchor_cls, anchor_reg, anchor_pos

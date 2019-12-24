@@ -35,12 +35,12 @@ def rpn_loss_cls(num_anchors):
 
 def class_loss_reg(num_classes):
     def class_loss_reg_fixed_num(y_true, y_pred):
-        x = y_true[:, :, 4 * num_classes:] - y_pred
+        x = y_true - y_pred
         x_abs = bk.abs(x)
         x_bool = bk.cast(bk.less_equal(x_abs, 1.0), 'float32')
         return lambda_cls_reg * bk.sum(
-            y_true[:, :, :4 * num_classes] * (x_bool * (0.5 * x * x) + (1 - x_bool) * (x_abs - 0.5))) / bk.sum(
-            epsilon + y_true[:, :, :4 * num_classes])
+            y_true[:, :, :] * (x_bool * (0.5 * x * x) + (1 - x_bool) * (x_abs - 0.5))) / bk.sum(
+            epsilon + y_true[:, :, :])
 
     return class_loss_reg_fixed_num
 
