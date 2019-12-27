@@ -6,6 +6,8 @@ import os
 
 if platform == 'darwin':
     base_directory = r'/Users/oranbebai/Documents/Data/BDD Drive/bdd100k'
+elif platform == 'linux':
+    base_directory = '/scratch/hpc/52/jiangz9/bdd100k'
 else:
     base_directory = r'F:\DataSet\BDD100k\bdd100k'
 

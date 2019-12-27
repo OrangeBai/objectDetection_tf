@@ -28,7 +28,7 @@ class FasterRcnnConfig(BaseConfig):
         self.anchor_sets = [(scale, ratio) for scale in self.anchor_box_scale for ratio in self.anchor_box_ratio]
 
         self.num_anchors = len(self.anchor_sets)
-        self.rpn_positive = 0.55
+        self.rpn_positive = 0.45
         self.rpn_negative = 0.2
         self.num_cls = 10
         self.threshold = 0.5
