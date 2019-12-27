@@ -153,23 +153,6 @@ def non_max_suppression_fast(boxes, prob, overlap_thresh=0.9, max_boxes=300):
 
     return boxes, prob
 
-
-def bbox_to_fbox(bbox, downscale):
-    x1 = int(round(bbox[0] / downscale))
-    y1 = int(round(bbox[1] / downscale))
-    x2 = int(round(bbox[2] / downscale))
-    y2 = int(round(bbox[3] / downscale))
-    return x1, y1, x2, y2
-
-
-def fbox_to_bbox(fbox, downscale):
-    x1 = fbox[0] * downscale
-    y1 = fbox[1] * downscale
-    x2 = fbox[2] * downscale
-    y2 = fbox[3] * downscale
-    return x1, y1, x2, y2
-
-
 def clip_box(box, img_shape):
     x1 = max(0, box[0])
     y1 = max(0, box[1])
@@ -177,10 +160,3 @@ def clip_box(box, img_shape):
     y2 = min(box[3], img_shape[0])
     return x1, y1, x2, y2
 
-
-def clip_fbox(fbox, feature_shape):
-    x1 = min(max(0, fbox[0]), feature_shape[1] - 2)
-    y1 = min(max(0, fbox[1]), feature_shape[0] - 2)
-    w = max(fbox[2], 2)
-    h = max(fbox[3], 2)
-    return x1, y1, w, h

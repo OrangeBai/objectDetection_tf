@@ -19,20 +19,20 @@ def vgg_16_base(input_tensor=None):
     # Block 3, 56*56*256
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1', trainable=True)(x)
     x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2', trainable=True)(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3', trainable=True)(x)
+    # x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3', trainable=True)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
 
     # Block 4, 28*28*512
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1', trainable=True)(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2', trainable=True)(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3', trainable=True)(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv1', trainable=True)(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block4_conv2', trainable=True)(x)
+    # x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3', trainable=True)(x)
     x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
 
     # Block 5, 14*14*512
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv1', trainable=True)(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv2', trainable=True)(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3', trainable=True)(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv1', trainable=True)(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block5_conv2', trainable=True)(x)
+    # x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3', trainable=True)(x)
+    # x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
 
     # x: 7*7*512
     return x
@@ -48,7 +48,7 @@ def rpn(base_layers, num_anchors):
     return [x_class, x_reg, base_layers]
 
 
-def classifier(base_layers, pooling_region, input_rois, num_rois, nb_classes, trainable=False):
+def classifier(base_layers, pooling_region, input_rois, num_rois, nb_classes):
     out_roi_pool = RoiPoolingConv(pooling_region, num_rois)([base_layers, input_rois])
 
     out = TimeDistributed(Flatten(name='flatten'))(out_roi_pool)
