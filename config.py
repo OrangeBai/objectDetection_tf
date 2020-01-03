@@ -19,4 +19,4 @@ val_directory = os.path.join(base_directory, 'images', '100k', 'val')
 show_directory = os.path.join(base_directory, 'test')
 
 
-
+model_path = r'F:\PHD\Computer science\RA\BDD-100k\vgg16_raw_0.hdf5'

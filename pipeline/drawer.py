@@ -14,7 +14,7 @@ class Drawer:
         for i in range(len(labels)):
             point_1 = (int(self.zoom[0] * labels[i]['coordinates'][0]), int(self.zoom[1] * labels[i]['coordinates'][1]))
             point_2 = (int(self.zoom[0] * labels[i]['coordinates'][2]), int(self.zoom[1] * labels[i]['coordinates'][3]))
-            cv2.rectangle(self.raw_img, point_1, point_2, (0, 255, 0))
+            cv2.rectangle(self.raw_img, point_1, point_2, color)
 
     def draw_gt_labels(self, rpn_cls, rpn_reg, raw, color=(0, 0, 255)):
         num_of_anchors = rpn_cls.shape[3] // 2
@@ -32,7 +32,10 @@ class Drawer:
                             int(pre_box[2] * self.zoom[0]), int(pre_box[3] * self.zoom[1])
                         ]
                         cv2.rectangle(self.raw_img, (pre_box_in_raw[0], pre_box_in_raw[1]),
-                                      (pre_box_in_raw[2], pre_box_in_raw[3]), (0, 0, 255))
+                                      (pre_box_in_raw[2], pre_box_in_raw[3]), color)
+
+    def draw_cls_labels(self):
+        pass
 
     def paint(self):
         cv2.imwrite(self.output_dir, self.raw_img)

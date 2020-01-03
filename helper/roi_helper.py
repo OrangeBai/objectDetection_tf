@@ -57,7 +57,7 @@ def cal_dx(gt_box, anchor_box):
     cx_anchor, cy_anchor, w_anchor, h_anchor = cal_center_and_length(anchor_box)
 
     tx = (cx_gt - cx_anchor) / w_anchor
-    ty = (cy_gt - cy_gt) / h_anchor
+    ty = (cy_gt - cy_anchor) / h_anchor
     tw = np.log((w_gt / w_anchor))
     th = np.log((h_gt / h_anchor))
 
@@ -87,7 +87,7 @@ def inv_dx(dx, anchor_box, img_shape):
     return clip_box([x1_pre, y1_pre, x2_pre, y2_pre], img_shape)
 
 
-def non_max_suppression_fast(boxes, prob, overlap_thresh=0.9, max_boxes=300):
+def non_max_suppression_fast(boxes, prob, overlap_thresh=0.7, max_boxes=300):
     # code used from here: http://www.pyimagesearch.com/2015/02/16/faster-non-maximum-suppression-python/
     # if there are no boxes, return an empty list
     if len(boxes) == 0:
@@ -141,8 +141,7 @@ def non_max_suppression_fast(boxes, prob, overlap_thresh=0.9, max_boxes=300):
         overlap = area_int / (area_union + 1e-6)
 
         # delete all indexes from the index list that have
-        idxs = np.delete(idxs, np.concatenate(([last],
-                                               np.where(overlap > overlap_thresh)[0])))
+        idxs = np.delete(idxs, np.concatenate(([last], np.where(overlap > overlap_thresh)[0])))
 
         if len(pick) >= max_boxes:
             break

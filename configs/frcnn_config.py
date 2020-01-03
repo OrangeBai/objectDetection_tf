@@ -1,13 +1,15 @@
 from configs.base_config import *
 from helper.roi_helper import *
-from nets import VGG16 as vgg16
+from nets import vgg16 as vgg16
+from nets import res34 as res
 import math
 import numpy as np
 from pipeline.generator import *
+import random
 
 
 class FasterRcnnConfig(BaseConfig):
-    def __init__(self, base_net):
+    def __init__(self, base_net, num_cls, img_shape):
         """
 
         @param base_net: Name of base net
@@ -17,25 +19,27 @@ class FasterRcnnConfig(BaseConfig):
         """
         super().__init__()
         if base_net == 'vgg16':
-            self.downscale = 32
+            self.downscale = vgg16.down_scale
             self.base_net = vgg16.vgg_16_base
-            self.classifier = vgg16.classifier
+        elif base_net == 'res':
+            self.downscale = res.downscale
+            self.base_net = res.base
         else:
-            self.downscale = 16
-        self.anchor_box_scale = [8, 16, 32, 64, 128, 256]
-        self.anchor_box_ratio = [(1, 1), (1. / math.sqrt(2), 2. / math.sqrt(2)), (2. / math.sqrt(2), 1. / math.sqrt(2)),
-                                 (1, 2), (2, 1)]
+            print('Invalid input')
+        self.anchor_box_scale = [16, 32, 64, 128, 256, 320]
+        self.anchor_box_ratio = [(1, 1), (1, 2), (2, 1)]
         self.anchor_sets = [(scale, ratio) for scale in self.anchor_box_scale for ratio in self.anchor_box_ratio]
 
         self.num_anchors = len(self.anchor_sets)
-        self.rpn_positive = 0.45
-        self.rpn_negative = 0.2
-        self.num_cls = 10
+        self.rpn_positive = 0.5
+        self.rpn_negative = 0.3
+        self.num_cls = num_cls
         self.threshold = 0.5
-        self.img_shape = (720, 960, 3)
-        self.feature_shape = (45, 60, 512)
+        self.img_shape = img_shape
+        self.feature_shape = (self.img_shape[0] // self.downscale, self.img_shape[1] // self.downscale, 512)
         self.pooling_region = 5
         self.num_roi = 8
+        self.num_rpn_valid = 256
 
     def cal_gt_tags(self, img, labels):
         """
@@ -81,8 +85,9 @@ class FasterRcnnConfig(BaseConfig):
 
                     x2 = x1 + anchor_width
                     y2 = y1 + anchor_height
-                    # If anchor box invalid, continue
-                    x1, y1, x2, y2 = clip_box([x1, y1, x2, y2], self.img_shape[:2])
+                    # if anchor box invalid, clip it to a valid shape
+                    if x1 < 0 or y1 < 0 or x2 > self.img_shape[1] or y2 > self.img_shape[0]:
+                        continue
 
                     # anchor box coordinates in raw image
                     anchor_box = (x1, y1, x2, y2)
@@ -99,19 +104,21 @@ class FasterRcnnConfig(BaseConfig):
                         if cur_iou > best_iou_all:
                             # record best iou of all anchors for debugging
                             best_iou_all = cur_iou
-                        if cur_iou > self.rpn_positive and cur_iou > best_iou:
-                            # if higher than its best, box valid, label it positive
+                        if cur_iou > best_iou:
                             best_iou = cur_iou
-                            best_class = gt_class
+                            if cur_iou > self.rpn_positive:
+                                # if higher than its best, box valid, label it positive
+                                best_iou = cur_iou
+                                best_class = gt_class
 
-                            box_valid[jy, ix, anchor_idx] = 1
-                            box_signal[jy, ix, anchor_idx] = 1
-                            box_class[jy, ix, anchor_idx] = best_class
+                                box_valid[jy, ix, anchor_idx] = 1
+                                box_signal[jy, ix, anchor_idx] = 1
+                                box_class[jy, ix, anchor_idx] = best_class
 
-                            # calculate the rpn regression ground truth
-                            box_rpn_valid[jy, ix, 4 * anchor_idx: 4 * anchor_idx + 4] = 1
-                            box_rpn_reg[jy, ix, 4 * anchor_idx: 4 * anchor_idx + 4] = cal_dx(gt_box, anchor_box)
-                            num_anchors_for_bbox[label_idx] += 1
+                                # calculate the rpn regression ground truth
+                                box_rpn_valid[jy, ix, 4 * anchor_idx: 4 * anchor_idx + 4] = 1
+                                box_rpn_reg[jy, ix, 4 * anchor_idx: 4 * anchor_idx + 4] = cal_dx(gt_box, anchor_box)
+                                num_anchors_for_bbox[label_idx] += 1
 
                         if cur_iou > best_iou_for_bbox[label_idx]:
                             # id1f higher than the best iou of current object, record
@@ -125,17 +132,31 @@ class FasterRcnnConfig(BaseConfig):
                         # if best iou of current anchor box less than threshold, box valid, label it negative
                         box_valid[jy, ix, anchor_idx] = 1
                         box_signal[jy, ix, anchor_idx] = 0
+        #
+        # for bbox_idx in range(num_bbox):
+        #     # set anchor box each object
+        #     cur_jy, cur_ix, cur_anchor_idx = best_anchor_for_bbox[bbox_idx]
+        #     box_valid[cur_jy, cur_ix, cur_anchor_idx] = 1
+        #     box_signal[cur_jy, cur_ix, cur_anchor_idx] = 1
+        #
+        #     box_rpn_valid[cur_jy, cur_ix, 4 * cur_anchor_idx: 4 * cur_anchor_idx + 4] = 1
+        #     box_rpn_reg[cur_jy, cur_ix, 4 * cur_anchor_idx: 4 * cur_anchor_idx + 4] = best_dx_for_bbox[bbox_idx]
+        #
+        #     box_class[cur_jy, cur_ix, cur_anchor_idx] = labels[bbox_idx]['category']
 
-        for bbox_idx in range(num_bbox):
-            # set anchor box each object
-            cur_jy, cur_ix, cur_anchor_idx = best_anchor_for_bbox[bbox_idx]
-            box_valid[cur_jy, cur_ix, cur_anchor_idx] = 1
-            box_signal[cur_jy, cur_ix, cur_anchor_idx] = 1
+        pos_loc = np.where(np.logical_and(box_valid[:, :, :] == 1, box_signal[:, :, :] == 1))
+        neg_loc = np.where(np.logical_and(box_valid[:, :, :] == 1, box_signal[:, :, :] == 0))
 
-            box_rpn_valid[cur_jy, cur_ix, 4 * cur_anchor_idx: 4 * cur_anchor_idx + 4] = 1
-            box_rpn_reg[cur_jy, cur_ix, 4 * cur_anchor_idx: 4 * cur_anchor_idx + 4] = best_dx_for_bbox[bbox_idx]
+        num_pos = len(pos_loc[0])
+        num_neg = len(neg_loc[0])
 
-            box_class[cur_jy, cur_ix, cur_anchor_idx] = labels[bbox_idx]['category']
+        if num_pos > self.num_rpn_valid:
+            val_loc = random.sample(range(len(neg_loc[0])), self.num_rpn_valid)
+            box_valid[pos_loc[0][val_loc], pos_loc[1][val_loc], pos_loc[2][val_loc]] = 0
+
+        if num_neg > num_pos:
+            val_loc = random.sample(range(len(neg_loc[0])),  num_neg - 2 * num_pos)
+            box_valid[neg_loc[0][val_loc], neg_loc[1][val_loc], neg_loc[2][val_loc]] = 0
 
         rpn_cls = np.concatenate([box_valid, box_signal], axis=2)
         rpn_reg = np.concatenate([box_rpn_valid, box_rpn_reg], axis=2)
@@ -145,7 +166,7 @@ class FasterRcnnConfig(BaseConfig):
         rpn_cls_valid = sum(sum(sum(box_signal)))
         return rpn_cls, rpn_reg, box_class, box_raw, rpn_cls_valid
 
-    def select_highest_pred_box(self, pre_signal, pre_rpn_reg):
+    def select_highest_pred_box(self, pre_signal, pre_rpn_reg, reg_back=False):
         rpn_width, rpn_height, num_anchors = pre_signal.shape[:3]
         num_all_anchors = rpn_width * rpn_height * num_anchors
         all_box = np.zeros((num_all_anchors, 4))  # coordinates of bounding boxes for each anchor box
@@ -167,13 +188,15 @@ class FasterRcnnConfig(BaseConfig):
                     y2 = y1 + anchor_height
 
                     # convert predicted regression to bounding boxes
-                    pred_box = inv_dx(pre_rpn_reg[ix, jy, 4 * anchor_idx: 4 * anchor_idx + 4], [x1, y1, x2, y2],
-                                      self.img_shape[:2])
-                    all_box[cur_idx, :4] = pred_box
+                    pred_box = [x1, y1, x2, y2]
+                    if reg_back:
+                        pred_box = inv_dx(pre_rpn_reg[ix, jy, 4 * anchor_idx: 4 * anchor_idx + 4], [x1, y1, x2, y2],
+                                          self.img_shape[:2])
+                    all_box[cur_idx, :4] = clip_box(pred_box, self.img_shape[:2])
                     all_prob[cur_idx] = pre_signal[ix, jy, anchor_idx]
 
         # Select boxes with highest probability
-        selected = non_max_suppression_fast(all_box, all_prob)
+        selected = non_max_suppression_fast(all_box, all_prob, max_boxes=600)
 
         return selected
 
@@ -210,8 +233,8 @@ class FasterRcnnConfig(BaseConfig):
                     anchor_reg_dx[anchor_box_idx, 4 * cur_gt_cls - 4: 4 * cur_gt_cls] = cal_dx(cur_gt_box,
                                                                                                normalized_anchor)
                     anchor_pos[anchor_box_idx] = 1
-                else:
-                    anchor_cls[anchor_box_idx, 0] = 1
+            if not anchor_pos[anchor_box_idx]:
+                anchor_cls[anchor_box_idx, 0] = 1
         anchor_reg = np.concatenate([anchor_reg_valid, anchor_reg_dx], axis=1)
 
         anchor_x = np.expand_dims(anchor_x, axis=0)
@@ -244,8 +267,8 @@ class FasterRcnnConfig(BaseConfig):
         fbox = cal_x1_and_length(feature_box)
         x1 = min(max(0, fbox[0]), self.feature_shape[1] - 2)
         y1 = min(max(0, fbox[1]), self.feature_shape[0] - 2)
-        w = max(fbox[2], 2)
-        h = max(fbox[3], 2)
+        w = min(max(fbox[2], 2), self.feature_shape[1] - 1 - x1)
+        h = min(max(fbox[3], 2), self.feature_shape[0] - 1 - y1)
         return x1, y1, w, h
 
     def fbox_to_bbox(self, fbox):

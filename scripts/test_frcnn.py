@@ -1,4 +1,4 @@
-from Model.frcnn import *
+from model.frcnn import *
 from pipeline.generator import *
 from configs.frcnn_config import *
 from tensorflow.keras.optimizers import Adam, SGD, RMSprop
@@ -15,10 +15,11 @@ if gpus:
         print('Set memery growth False')
 
 c = FasterRcnnConfig('vgg16')
+c.num_cls=21
 frcnn = FRCNN(c, vgg.vgg_16_base, vgg.rpn, vgg.classifier)
 gen = Generator(c)
 
-model_path = r'F:\PHD\Computer science\RA\BDD-100k\vgg16_raw_1.hdf5'
+model_path = r"F:\Code\Computer Science\BDD-100k\model_path\00_loss-2.1877.h5"
 
 model_rpn, model_classifier_only = frcnn.test_model()
 
@@ -30,7 +31,7 @@ model_classifier_only.compile(optimizer='sgd', loss='mse')
 
 for time in range(20):
     cur_img, cur_label, path = gen.next()
-    rpn_cls, rpn_reg, cls, raw = c.cal_gt_tags(cur_img, cur_label)
+    rpn_cls, rpn_reg, cls, raw, valid = c.cal_gt_tags(cur_img, cur_label)
     cur_img = tf.cast(cur_img, tf.float32)
 
     signal_pre, rep_reg_pre, F = model_rpn.predict(cur_img)
@@ -43,9 +44,9 @@ for time in range(20):
         prob, dx = model_classifier_only.predict_on_batch([F, anchor_x[:, i * c.num_roi:i * c.num_roi + c.num_roi, :]])
         for j in range(c.num_roi):
             for idx in range(prob.shape[2]):
-                if prob[0, j, idx] > 0.3:
+                if prob[0, j, idx] > 0.5:
                     if idx != 0:
-                        pred_bounding = inv_dx(dx[0, j, idx * 4: idx * 4 + 4], normalized_anchor[0, i * c.num_roi + j], c.img_shape)
+                        pred_bounding = inv_dx(dx[0, j, idx * 4: idx * 4 + 4].numpy(), normalized_anchor[i * c.num_roi + j], c.img_shape)
                         pred_cls = idx
                         res['bounding'].append(pred_bounding)
                         res['cls'].append(pred_cls)

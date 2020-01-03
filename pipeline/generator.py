@@ -5,34 +5,79 @@ import cv2
 import config as data_config
 from configs.frcnn_config import *
 import tensorflow as tf
+from bs4 import BeautifulSoup
 
 
 class Generator(object):
-    def __init__(self, net_config, mode='train'):
-        self.img_shape = net_config.img_shape
-        if mode == 'train':
-            self.img_path = data_config.train_directory
-            label_path = os.path.join(data_config.label_directory, 'train_label_new.json')
-            with open(label_path, 'r') as f:
-                self.label_list = json.load(f)
-        elif mode == 'val':
-            self.img_path = data_config.val_directory
-            label_path = os.path.join(data_config.label_directory, 'val_label_new.json')
-            with open(label_path, 'r') as f:
-                self.label_list = json.load(f)
-        else:
-            self.img_path = data_config.test_directory
+    def __init__(self, img_shape):
+        self.img_shape = img_shape
+        self.img_data = []
         self.cur_img = None
+        self.cls_dict = None
+        self.num_cls = 0
 
     def __next__(self):
         return self.next()
 
+    def bdd_parser(self, img_directory, label_file):
+        cls = {'backgroud': 0}
+        new_img_labels = []
+        with open(label_file, 'r') as file:
+            data_store = json.load(file)
+        for img_label in data_store:
+            new_label = {'path': os.path.join(img_directory, img_label['name']),
+                         'attributes': img_label['attributes'],
+                         'labels': []}
+            for label in img_label['labels']:
+                if 'box2d' in label.keys():
+                    cur_label = {}
+                    category = label['category']
+                    if category not in cls.keys():
+                        cls[category] = len(cls)
+                    cur_label['category'] = cls[category]
+                    cur_label['coordinates'] = (label['box2d']['x1'], label['box2d']['y1'],
+                                                label['box2d']['x2'], label['box2d']['y2'])
+                    cur_label['attributes'] = label['attributes']
+                    new_label['labels'].append(cur_label)
+            new_img_labels.append(new_label)
+        self.img_data.extend(new_img_labels)
+        self.cls_dict = cls
+        self.num_cls = len(self.cls_dict.keys())
+
+    def voc_parser(self, img_directory, label_directory):
+        cls = {'backgroud': 0}
+        label_files = os.listdir(label_directory)
+        new_img_labels = []
+        for label_file in label_files:
+            new_img_label = {'path': '',
+                             'labels': []}
+            with open(os.path.join(label_directory, label_file)) as f:
+                soup = BeautifulSoup(f, 'xml')
+            new_img_label['path'] = os.path.join(img_directory, soup.filename.text)
+            objs = soup.find_all('object')
+            for obj in objs:
+                cur_label = {}
+                category = obj.find('name', recursive=False).text
+                if category not in cls.keys():
+                    cls[category] = len(cls)
+                cur_label['category'] = cls[category]
+                bbox = obj.find('bndbox', recursive=False)
+                cur_label['coordinates'] = [int(bbox.xmin.text), int(bbox.ymin.text),
+                                            int(bbox.xmax.text), int(bbox.ymax.text)]
+                cur_label['truncated'] = int(obj.truncated.text)
+                cur_label['difficult'] = int(obj.difficult.text)
+                new_img_label['labels'].append(cur_label)
+            new_img_labels.append(new_img_label)
+            self.img_data.extend(new_img_labels)
+            self.cls_dict = cls
+            self.num_cls = len(cls.keys())
+        return
+
     def next(self):
-        label_num = len(self.label_list)
+        label_num = len(self.img_data)
         idx = random.randint(0, label_num - 1)
-        cur_instance = self.label_list[idx]
-        img_name = cur_instance['name']
-        img_path = os.path.join(self.img_path, img_name)
+        cur_instance = self.img_data[idx]
+        img_path = cur_instance['path']
 
         self.cur_img = cv2.imread(img_path)
         labels = cur_instance['labels']
@@ -60,8 +105,12 @@ class Generator(object):
 
         return new_img, new_labels
 
+    def retrieve_cls(self):
+        return self.cls_dict, len(self.cls_dict.keys())
+
     def retrieve_cur_img(self):
         return self.cur_img
+
 
 if __name__ == '__main__':
     pass
